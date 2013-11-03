@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import ast
-from const import WRITE, ESCAPE, TO_STRING
 
 
 def scalar_to_ast(value):
