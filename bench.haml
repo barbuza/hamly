@@ -1,5 +1,5 @@
 %table
-  - for rownum, row in enumerate(table)
+  - for row in table
     %tr
-      - for cellnum, cell in enumerate(row)
-        %td( id="row-%s-cell-%s" % (rownum, cellnum) )= cell
+      - for cell in row.values()
+        %td= cell

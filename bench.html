@@ -1,9 +1,8 @@
 <table>
 {% for row in table %}
   <tr>
-  {% set rowloop = loop %}
-  {% for cell in row %}
-    <td id="row-{{ rowloop.index0|escape }}-cell-{{ loop.index0|escape }}">{{ cell|escape }}</td>
+  {% for cell in row.values() %}
+    <td>{{ cell|escape }}</td>
   {% endfor %}
   </tr>
 {% endfor %}
