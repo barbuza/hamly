@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 
 import ast
+import copy
+
 from .const import OPEN_TAG, WRITE, ESCAPE, TO_STRING, WRITE_MULTI, QUOTEATTR, WRITE_ATTRS
-from .ast_utils import make_call, make_expr, make_tuple, ast_True, make_cond, copy_loc
-from .escape import quoteattr
+from .ast_utils import make_call, make_expr, make_tuple, ast_True, make_cond, copy_loc, scalar_to_ast
+from .escape import quoteattr, escape
 from .html import write_attrs, write_attrs_ast
+
+
+INTERNALS = [WRITE, OPEN_TAG, WRITE_MULTI, QUOTEATTR, WRITE_ATTRS, ESCAPE,
+             "True", "False", "None", "range", "xrange", "enumerate", "len", "dict"]
+
 
 class NameExtractorVisitor(ast.NodeVisitor):
 
@@ -43,7 +50,7 @@ class NameCollectorVisitor(ast.NodeVisitor):
     def visit_Name(self, node):
         if isinstance(node.ctx, ast.Load):
             name = node.id
-            if name not in ("True", "False", "None",):
+            if name not in INTERNALS:
                 for local in self.locals:
                     if name in local:
                         break
@@ -51,6 +58,18 @@ class NameCollectorVisitor(ast.NodeVisitor):
                     self.names.append(name)
         elif isinstance(node.ctx, ast.Store):
             self.locals[-1].append(node.id)
+
+    def visit_ListComp(self, node):
+        for gen in node.generators:
+            self.visit(gen)
+        gen_names_extractor = NameExtractorVisitor()
+        for gen in node.generators:
+            gen_names_extractor.visit(gen)
+        self.locals.append(gen_names_extractor.names)
+        self.locals.append([])
+        self.visit(node.elt)
+        self.locals.pop()
+        self.locals.pop()
 
     def visit_FunctionDef(self, node):
         param_names = NameExtractorVisitor.extract_names(node.args)
@@ -63,20 +82,13 @@ class NameCollectorVisitor(ast.NodeVisitor):
         self.locals.pop()
 
 
-class StaticTreeVisitor(ast.NodeVisitor):
-
-    def __init__(self):
-        self.static = True
-        super(StaticTreeVisitor, self).__init__()
-
-    def visit_Name(self, node):
-        self.static = False
+class StaticTreeVisitor(object):
 
     @classmethod
     def is_static(cls, node):
-        visitor = cls()
-        visitor.visit(node)
-        return visitor.static
+        collector = NameCollectorVisitor()
+        collector.visit(node)
+        return not collector.names
 
 
 class OpenReplaceOptimizer(ast.NodeTransformer):
@@ -97,7 +109,7 @@ class OpenReplaceOptimizer(ast.NodeTransformer):
         return make_call(QUOTEATTR, data)
 
     def visit_Expr(self, node):
-        if isinstance(node.value, ast.Call) and node.value.func.id == OPEN_TAG:
+        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == OPEN_TAG:
             static_args = []
             dynamic_args = []
             tagname = node.value.args[0].s
@@ -147,6 +159,7 @@ class MultiWriteOptimizer(ast.NodeTransformer):
     def is_write(self, node):
         return isinstance(node, ast.Expr)\
             and isinstance(node.value, ast.Call)\
+            and isinstance(node.value.func, ast.Name)\
             and node.value.func.id == WRITE
 
     def join_strings(self, writes):
@@ -209,21 +222,89 @@ class MultiWriteOptimizer(ast.NodeTransformer):
                         node)
 
 
+class SubstituteVisitor(ast.NodeTransformer):
 
-OPTIMIZATION_PIPELINE = [OpenReplaceOptimizer, MultiWriteOptimizer]
-# OPTIMIZATION_PIPELINE = []
+    def __init__(self, name, replacement):
+        self.name = name
+        self.replacement = replacement
+
+    def visit_Name(self, node):
+        if node.id == self.name and isinstance(node.ctx, ast.Load):
+            return self.replacement
+        return node
+
+
+class UnloopOptimizer(ast.NodeTransformer):
+
+    def __init__(self):
+        self._unloop = False
+        super(UnloopOptimizer, self).__init__()
+
+    def evaluate(self, node):
+        return eval(compile(ast.fix_missing_locations(ast.Expression(node)), '', 'eval'))
+
+    def visit_For(self, node):
+        if StaticTreeVisitor.is_static(node.iter):
+            names = NameCollectorVisitor()
+            for body_node in node.body:
+                names.visit(body_node)
+            names = list(set(names.names))
+            iterable = self.evaluate(node.iter)
+            block = []
+            for value in self.evaluate(node.iter):
+                iter_assign = ast.Assign([node.target], scalar_to_ast(value))
+                code = compile(ast.fix_missing_locations(ast.Module([iter_assign])), '', 'exec')
+                scope = {}
+                body = map(copy.deepcopy, node.body)
+                exec code in scope
+                for st in body:
+                    for name in names:
+                        st = SubstituteVisitor(name, scalar_to_ast(scope[name])).visit(st)
+                    block.append(st)
+            self._unloop = True
+            return block
+        return node
+
+    def perform(self, node):
+        result = self.visit(node)
+        if self._unloop:
+            return UnloopOptimizer().perform(result)
+        return result
+
+
+
+class StaticEscapeOptimizer(ast.NodeTransformer):
+
+    def evaluate(self, node):
+        return eval(compile(ast.fix_missing_locations(ast.Expression(node)), '', 'eval'))
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == WRITE:
+            call = node.args[0]
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id in (ESCAPE, QUOTEATTR):
+                if StaticTreeVisitor.is_static(call.args[0]):
+                    if call.func.id == ESCAPE:
+                        node = make_call(WRITE, ast.Str(escape(self.evaluate(call.args[0]))))
+                    elif call.func.id == QUOTEATTR:
+                        node = make_call(WRITE, ast.Str(quoteattr(self.evaluate(call.args[0]))))
+        return node
+
+
+OPTIMIZATION_PIPELINE = [OpenReplaceOptimizer, UnloopOptimizer, StaticEscapeOptimizer, MultiWriteOptimizer]
+
 
 def optimize(node):
     for optimizer_cls in OPTIMIZATION_PIPELINE:
         optimizer = optimizer_cls()
-        node = optimizer.visit(node)
+        if hasattr(optimizer, "perform"):
+            node = optimizer.perform(node)
+        else:
+            node = optimizer.visit(node)
     
     names = NameCollectorVisitor()
     names.visit(node)
     names = list(set(names.names))
-    for name in (ESCAPE, TO_STRING, QUOTEATTR, WRITE_ATTRS, "enumerate", "len"):
-        if name in names:
-            names.remove(name)
+    names.extend((WRITE, WRITE_MULTI))
     arguments = ast.arguments(args=[ast.Name(name, ast.Param()) for name in names], vararg=None,
-                              kwarg="__kw", defaults=[])# defaults=[ast.Name("None", ast.Load()) for name in names])
+                              kwarg="__kw", defaults=[])
     return ast.Module([ast.FunctionDef(name="main", args=arguments, body=node.body, decorator_list=[])])

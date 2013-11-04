@@ -4,10 +4,23 @@ import ast
 
 
 def scalar_to_ast(value):
-    if isinstance(value, basestring):
+    if value is True:
+        return ast.Name("True", ast.Load())
+    elif value is False:
+        return ast.Name("False", ast.Load())
+    elif value is None:
+        return ast.Name("None", ast.Load())
+    elif isinstance(value, basestring):
         return ast.Str(value)
     elif isinstance(value, int) or isinstance(value, float):
         return ast.Num(value)
+    elif isinstance(value, list):
+        return ast.List(map(scalar_to_ast, value), ast.Load())
+    elif isinstance(value, tuple):
+        return ast.Tuple(map(scalar_to_ast, value), ast.Load())
+    elif isinstance(value, dict):
+        return ast.Dict(map(scalar_to_ast, value.keys()),
+                        map(scalar_to_ast, value.values()))
     else:
         return value
 
