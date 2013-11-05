@@ -12,6 +12,38 @@
     $ python -m timeit -s 'from benchmark import hamly_template, table' 'hamly_template(table=table)'
     100 loops, best of 3: 6.54 msec per loop
 
+###language
+
+it's haml, but without (for now) some ruby-related features.
+some examples:
+
+```haml
+
+%header
+
+%nav.wide#main
+
+.foo
+
+.foo(bar='spam', some='eggs')
+
+.foo(('bar', 'spam'), ('some', 'eggs'))
+
+.foo(('bar', 'spam'), some='eggs', **{'class': 'more'}) / just like a python call
+
+.foo{'class': 'spam'}
+
+- def button(caption)
+  .button= caption
+
++ button("look ma!")
+
+- for index, value in enumerate(range(10))
+  %div= index
+
+plain text
+
+```
 
 ### features
 
@@ -58,3 +90,4 @@ def main(_h_write, _h_write_multi, **__kw):
 ```
 
 all writes are done with `append` and `extend` methods of `list`
+
