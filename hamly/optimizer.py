@@ -348,8 +348,38 @@ class InlineOptimizer(ast.NodeTransformer):
             return InlineOptimizer().perform(result)
         return result
 
+class DeadDefinesOptimizer(ast.NodeTransformer):
 
-OPTIMIZATION_PIPELINE = [OpenReplaceOptimizer, UnloopOptimizer, InlineOptimizer,
+    def remove_dead_defines(self, body):
+        functions = []
+        keep = []
+        for item in body:
+            if isinstance(item, ast.FunctionDef):
+                functions.append(item.name)
+        for item in body:
+            names = NameCollectorVisitor()
+            names.visit(item)
+            for name in names.names:
+                if name in functions and name not in keep:
+                    keep.append(name)
+        new_body = []
+        for item in body:
+            if isinstance(item, ast.FunctionDef):
+                if item.name in keep:
+                    new_body.append(item)
+            else:
+                new_body.append(item)
+        return new_body
+
+    def generic_visit(self, node):
+        if hasattr(node, "body"):
+            node_ = copy.deepcopy(node)
+            node_.body = self.remove_dead_defines(node.body)
+            return node_
+        return node
+
+
+OPTIMIZATION_PIPELINE = [OpenReplaceOptimizer, UnloopOptimizer, InlineOptimizer, DeadDefinesOptimizer,
                          StaticEscapeOptimizer, MultiWriteOptimizer]
 
 
