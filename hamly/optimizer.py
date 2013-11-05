@@ -4,7 +4,8 @@ import ast
 import copy
 
 from .const import OPEN_TAG, WRITE, ESCAPE, TO_STRING, WRITE_MULTI, QUOTEATTR, WRITE_ATTRS
-from .ast_utils import make_call, make_expr, make_tuple, ast_True, make_cond, copy_loc, scalar_to_ast
+from .ast_utils import (make_call, make_expr, make_tuple, ast_True,
+                        make_cond, copy_loc, scalar_to_ast, defines_functions, )
 from .escape import quoteattr, escape
 from .html import write_attrs, write_attrs_ast
 
@@ -288,7 +289,68 @@ class StaticEscapeOptimizer(ast.NodeTransformer):
         return node
 
 
-OPTIMIZATION_PIPELINE = [OpenReplaceOptimizer, UnloopOptimizer, StaticEscapeOptimizer, MultiWriteOptimizer]
+
+class InlineOptimizer(ast.NodeTransformer):
+
+    def __init__(self):
+        self.functions = [[]]
+        self._inline = False
+        super(InlineOptimizer, self).__init__()
+
+    def visit_Expr(self, node):
+        if not isinstance(node.value, ast.Call):
+            return node
+        if isinstance(node.value.func, ast.Name)\
+                    and node.value.func.id not in (WRITE, WRITE_MULTI, ESCAPE, QUOTEATTR)\
+                    and not node.value.keywords\
+                    and not node.value.starargs\
+                    and not node.value.kwargs:
+            impl = None
+            for name, impl in sum(reversed(self.functions), []):
+                if name == node.value.func.id:
+                    break
+            else:
+                return node
+            if not impl or impl.args.vararg or impl.args.kwarg:
+                return node
+            undefined = object()
+            min_args = len(impl.args.args) - len(impl.args.defaults)
+            max_args = len(impl.args.args)
+            if len(node.value.args) < min_args or len(node.value.args) > max_args:
+                return node
+            body = copy.deepcopy(impl.body)
+            values = node.value.args[:]
+            values += impl.args.defaults[len(values) - max_args:]
+            for arg, value in zip(impl.args.args, values):
+                body = map(SubstituteVisitor(arg.id, value).visit, body)
+            self._inline = True
+            return body
+        return node
+
+    def visit_FunctionDef(self, node):
+        if not defines_functions(node.body):
+            self.functions[-1].append((node.name, node))
+        self.functions.append([])
+        new_body = []
+        for child in node.body:
+            result = self.visit(child)
+            if isinstance(result, list):
+                new_body.extend(result)
+            else:
+                new_body.append(result)
+        node.body = new_body
+        self.functions.pop()
+        return node
+
+    def perform(self, node):
+        result = self.visit(node)
+        if self._inline:
+            return InlineOptimizer().perform(result)
+        return result
+
+
+OPTIMIZATION_PIPELINE = [OpenReplaceOptimizer, UnloopOptimizer, InlineOptimizer,
+                         StaticEscapeOptimizer, MultiWriteOptimizer]
 
 
 def optimize(node):

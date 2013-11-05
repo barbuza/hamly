@@ -59,3 +59,26 @@ def copy_loc(target, source):
     if isinstance(target, list):
         return [copy_loc(item, source) for item in target]
     return ast.copy_location(target, source)
+
+
+class DefinesVisitor(ast.NodeVisitor):
+
+    def __init__(self):
+        self.defines = False
+        super(DefinesVisitor, self).__init__()
+
+    def visit_FunctionDef(self, node):
+        self.defines = True
+
+
+def defines_functions(tree):
+    if isinstance(tree, list):
+        defines = False
+        for item in tree:
+            if defines_functions(item):
+                defines = True
+                break
+        return defines
+    visitor = DefinesVisitor()
+    visitor.visit(tree)
+    return visitor.defines
