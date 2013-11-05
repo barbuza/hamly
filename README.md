@@ -1,7 +1,7 @@
 # haml for python
 ## faster than jinja2 and mako
 
-### benchmark
+### motivation
 
     $ python -m timeit -s 'from benchmark import j2_template, table' 'j2_template(table=table)'
     10 loops, best of 3: 31.9 msec per loop
@@ -11,3 +11,50 @@
 
     $ python -m timeit -s 'from benchmark import hamly_template, table' 'hamly_template(table=table)'
     100 loops, best of 3: 6.54 msec per loop
+
+
+### features
+
+`hamly` converts template to `ast` like many others do.
+the magic comes after transformation is done.
+`hamly` optimizes resulting tree with several rules:
+
+* do all tag attributes related stuff if possible (no dynamic names)
+* unroll loops with literal iterator
+* join strings in sequential writes
+* combine sequential writes into one call
+* inline functions with no starargs / kwargs
+* escape literal values (strings and expressions)
+* remove inlined function definitions
+
+this template
+
+```haml
+- def foo(bar)
+  %div.spam= bar
+- for i in range(2)
+  +foo(i)
+```
+
+will first compile to
+
+```python
+def main(_h_write, _h_write_multi, **__kw):
+
+    def foo(bar):
+        _h_open_tag('div', ('class', 'spam'))
+        _h_write(_h_escape(bar))
+        _h_write('\n')
+        _h_write('</div>\n')
+    for i in range(2):
+        foo(i)
+```
+
+and then transformed to
+
+```python
+def main(_h_write, _h_write_multi, **__kw):
+    _h_write(u"<div class='spam'>\n0\n</div>\n<div class='spam'>\n1\n</div>\n")
+```
+
+all writes are done with `append` and `extend` methods of `list`
