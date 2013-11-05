@@ -2,3 +2,5 @@
 /build/
 /hamly/*.so
 *.pyc
+/dist/
+/hamly.egg-info/
