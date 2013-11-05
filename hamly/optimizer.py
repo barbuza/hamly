@@ -21,7 +21,8 @@ class NameExtractorVisitor(ast.NodeVisitor):
 
     def visit_Name(self, node):
         if isinstance(node.ctx, ast.Store) or isinstance(node.ctx, ast.Param):
-            self.names.append(node.id)
+            if node.id not in self.names:
+                self.names.append(node.id)
 
     @classmethod
     def extract_names(cls, node):
@@ -245,10 +246,7 @@ class UnloopOptimizer(ast.NodeTransformer):
 
     def visit_For(self, node):
         if StaticTreeVisitor.is_static(node.iter):
-            names = NameCollectorVisitor()
-            for body_node in node.body:
-                names.visit(body_node)
-            names = list(set(names.names))
+            names = NameExtractorVisitor.extract_names(node.target)
             iterable = self.evaluate(node.iter)
             block = []
             for value in self.evaluate(node.iter):
