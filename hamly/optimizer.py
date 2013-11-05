@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import re
 import ast
 import copy
 
@@ -116,6 +117,7 @@ class OpenReplaceOptimizer(ast.NodeTransformer):
             dynamic_args = []
             tagname = node.value.args[0].s
             for pair in node.value.args[1:]:
+                pair = InterpolateStrings().visit(pair)
                 if StaticTreeVisitor.is_static(pair):
                     static_args.append(pair)
                 else:
@@ -379,8 +381,41 @@ class DeadDefinesOptimizer(ast.NodeTransformer):
         return node
 
 
-OPTIMIZATION_PIPELINE = [OpenReplaceOptimizer, UnloopOptimizer, InlineOptimizer, DeadDefinesOptimizer,
-                         StaticEscapeOptimizer, MultiWriteOptimizer]
+class InterpolateStrings(ast.NodeTransformer):
+
+    def visit_Str(self, node):
+        replacements = re.findall(r'#{[^}]+}', node.s)
+        if not replacements:
+            return node
+        s = node.s
+        for rep in replacements:
+            s = s.replace(rep, '%s')
+        elements = [ast.parse(rep[2:-1]).body[0].value for rep in replacements]
+        node = ast.BinOp(ast.Str(s), ast.Mod(), make_tuple(*elements))
+        return node
+
+
+class InterpolateOutput(ast.NodeTransformer):
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name)\
+                and node.func.id == WRITE\
+                and isinstance(node.args[0], ast.Call)\
+                and isinstance(node.args[0].func, ast.Name)\
+                and node.args[0].func.id == ESCAPE:
+            node.args = map(InterpolateStrings().visit, node.args)
+        return node
+
+
+OPTIMIZATION_PIPELINE = (
+    InterpolateOutput,
+    OpenReplaceOptimizer,
+    UnloopOptimizer,
+    InlineOptimizer,
+    DeadDefinesOptimizer,
+    StaticEscapeOptimizer,
+    MultiWriteOptimizer
+)
 
 
 def optimize(node):
