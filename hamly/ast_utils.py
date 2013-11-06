@@ -10,23 +10,23 @@ def scalar_to_ast(value):
         return ast.Name("False", ast.Load())
     elif value is None:
         return ast.Name("None", ast.Load())
-    elif isinstance(value, basestring):
+    elif isinstance(value, str):
         return ast.Str(value)
     elif isinstance(value, int) or isinstance(value, float):
         return ast.Num(value)
     elif isinstance(value, list):
-        return ast.List(map(scalar_to_ast, value), ast.Load())
+        return ast.List([scalar_to_ast(x) for x in value], ast.Load())
     elif isinstance(value, tuple):
-        return ast.Tuple(map(scalar_to_ast, value), ast.Load())
+        return ast.Tuple([scalar_to_ast(x) for x in value], ast.Load())
     elif isinstance(value, dict):
-        return ast.Dict(map(scalar_to_ast, value.keys()),
-                        map(scalar_to_ast, value.values()))
+        return ast.Dict([scalar_to_ast(x) for x in value.keys()],
+                        [scalar_to_ast(x) for x in value.values()])
     else:
         return value
 
 
 def make_call(name, *args):
-    ast_args = map(scalar_to_ast, args)
+    ast_args = [scalar_to_ast(x) for x in args]
     return ast.Call(ast.Name(name, ast.Load()), ast_args, [], None, None)
 
 
@@ -35,7 +35,7 @@ def make_expr(node):
 
 
 def make_tuple(*elts):
-    ast_elts = map(scalar_to_ast, elts)
+    ast_elts = [scalar_to_ast(x) for x in elts]
     return ast.Tuple(ast_elts, ast.Load())
 
 

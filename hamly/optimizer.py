@@ -2,9 +2,13 @@
 
 import re
 import ast
+import sys
 import copy
 
-from .const import OPEN_TAG, WRITE, ESCAPE, TO_STRING, WRITE_MULTI, QUOTEATTR, WRITE_ATTRS
+from six import exec_
+
+from .const import (OPEN_TAG, WRITE, ESCAPE, TO_STRING,
+                    WRITE_MULTI, QUOTEATTR, WRITE_ATTRS, MAIN)
 from .ast_utils import (make_call, make_expr, make_tuple, ast_True,
                         make_cond, copy_loc, scalar_to_ast, defines_functions, )
 from .escape import quoteattr, escape, soft_unicode
@@ -127,7 +131,7 @@ class OpenReplaceOptimizer(ast.NodeTransformer):
 
             if not dynamic_args:
                 static_attrs_data = []
-                write_attrs(map(self.evaluate, static_args), static_attrs_data.append)
+                write_attrs([self.evaluate(x) for x in static_args], static_attrs_data.append)
                 block.append(self._write(''.join(static_attrs_data)))
             else:
                 static_names = False
@@ -201,7 +205,7 @@ class MultiWriteOptimizer(ast.NodeTransformer):
                 _flush()
                 result.append(item)
         _flush()
-        return map(self.visit, result)
+        return [self.visit(x) for x in result]
 
     def visit_For(self, node):
         return copy_loc(ast.For(node.target, node.iter,
@@ -256,8 +260,8 @@ class UnloopOptimizer(ast.NodeTransformer):
                 iter_assign = ast.Assign([node.target], scalar_to_ast(value))
                 code = compile(ast.fix_missing_locations(ast.Module([iter_assign])), '', 'exec')
                 scope = {}
-                body = map(copy.deepcopy, node.body)
-                exec code in scope
+                body = [copy.deepcopy(x) for x in node.body]
+                exec_(code, {}, scope)
                 for st in body:
                     for name in names:
                         st = SubstituteVisitor(name, scalar_to_ast(scope[name])).visit(st)
@@ -324,7 +328,7 @@ class InlineOptimizer(ast.NodeTransformer):
             values = node.value.args[:]
             values += impl.args.defaults[len(values) - max_args:]
             for arg, value in zip(impl.args.args, values):
-                body = map(SubstituteVisitor(arg.id, value).visit, body)
+                body = [SubstituteVisitor(arg.id, value).visit(x) for x in body]
             self._inline = True
             return body
         return node
@@ -403,7 +407,7 @@ class InterpolateOutput(ast.NodeTransformer):
                 and isinstance(node.args[0], ast.Call)\
                 and isinstance(node.args[0].func, ast.Name)\
                 and node.args[0].func.id == ESCAPE:
-            node.args = map(InterpolateStrings().visit, node.args)
+            node.args = [InterpolateStrings().visit(x) for x in node.args]
         return node
 
 
@@ -437,6 +441,10 @@ def optimize(node):
     names.visit(node)
     names = list(set(names.names))
     names.extend((WRITE, WRITE_MULTI))
-    arguments = ast.arguments(args=[ast.Name(name, ast.Param()) for name in names], vararg=None,
-                              kwarg="__kw", defaults=[])
-    return ast.Module([ast.FunctionDef(name="main", args=arguments, body=node.body, decorator_list=[])])
+    if sys.version_info[0] < 3:
+        arguments = ast.arguments(args=[ast.Name(name, ast.Param()) for name in names], vararg=None,
+                                  kwarg="__kw", defaults=[])
+    else:
+        arguments = ast.arguments([ast.arg(name, None) for name in names],
+                                  None, None, [], '__kw', None, [], [])
+    return ast.Module([ast.FunctionDef(name=MAIN, args=arguments, body=node.body, decorator_list=[])])

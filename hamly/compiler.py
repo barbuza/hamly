@@ -25,7 +25,7 @@ def tagnode_to_ast(node):
     if node.attrs:
         for key, value in node.attrs.items():
             callargs.append(make_tuple(key, value))
-    block = sum(map(node_to_ast, node.children), [make_expr(make_call(OPEN_TAG, *callargs))])
+    block = sum([node_to_ast(x) for x in node.children], [make_expr(make_call(OPEN_TAG, *callargs))])
     block.append(make_expr(make_call(WRITE, "</%s>\n" % node.tagname)))
     return block
 
@@ -35,8 +35,8 @@ def controlnode_to_ast(node):
         return [ast.Break()]
     mod = ast.parse("%s\n  pass" % node.code)
     ctrl = mod.body[0]
-    ctrl.body = sum(map(node_to_ast, node.children), [])
-    ctrl.orelse = sum(map(node_to_ast, node.orelse), [])
+    ctrl.body = sum([node_to_ast(x) for x in node.children], [])
+    ctrl.orelse = sum([node_to_ast(x) for x in node.orelse], [])
     return [ctrl]
 
 
