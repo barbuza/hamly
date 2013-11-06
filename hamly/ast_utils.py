@@ -1,7 +1,14 @@
 # -*- coding: utf-8 -*-
 
+import sys
 import ast
 
+if sys.version_info[0] < 3:
+    def is_string(value):
+        return isinstance(value, basestring)
+else:
+    def is_string(value):
+        return isinstance(value, str)
 
 def scalar_to_ast(value):
     if value is True:
@@ -10,7 +17,7 @@ def scalar_to_ast(value):
         return ast.Name("False", ast.Load())
     elif value is None:
         return ast.Name("None", ast.Load())
-    elif isinstance(value, str):
+    elif is_string(value):
         return ast.Str(value)
     elif isinstance(value, int) or isinstance(value, float):
         return ast.Num(value)

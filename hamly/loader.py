@@ -19,8 +19,12 @@ def get_template(filename):
     cached = cache.get(filename)
 
     if not cached:
+
         with open(filename) as fp:
-            source = fp.read()#.decode("utf-8")
+            source = fp.read()
+
+        if sys.version_info[0] < 3:
+            source = source.decode("utf-8")
 
         tree = parse(source)
         compiled = compile_tree(tree)
@@ -37,14 +41,6 @@ def get_template(filename):
                 template_source = codegen.to_source(optimized)
             except ImportError:
                 template_source = ""
-
-        # if sys.version_info[0] < 3:
-        #     optimized.body.insert(0, ast.ImportFrom("hamly.escape",
-        #                                             [ast.alias("escape", ESCAPE),
-        #                                              ast.alias("quoteattr", QUOTEATTR),
-        #                                              ast.alias("soft_unicode", TO_STRING)],
-        #                                             0))
-        #     optimized.body.insert(0, ast.ImportFrom("hamly.html", [ast.alias("write_attrs", WRITE_ATTRS)], 0))
 
         code = compile(ast.fix_missing_locations(optimized), filename, "exec")
 
@@ -70,6 +66,6 @@ def get_template(filename):
         setattr(render, "template_source", template_source)
 
         cached = render
-        # cache[filename] = cached
+        cache[filename] = cached
 
     return cached

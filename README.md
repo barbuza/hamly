@@ -12,6 +12,11 @@
     $ python -m timeit -s 'from benchmark import hamly_template, table' 'hamly_template(table=table)'
     100 loops, best of 3: 6.54 msec per loop
 
+even faster with python3
+
+    $ python3.3 -m timeit -s 'from benchmark import hamly_template, table' 'hamly_template(table=table)'
+    100 loops, best of 3: 3.83 msec per loop
+
 ###language
 
 it's haml, but without (for now) some ruby-related features.
