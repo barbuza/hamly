@@ -7,7 +7,7 @@ import copy
 from .const import OPEN_TAG, WRITE, ESCAPE, TO_STRING, WRITE_MULTI, QUOTEATTR, WRITE_ATTRS
 from .ast_utils import (make_call, make_expr, make_tuple, ast_True,
                         make_cond, copy_loc, scalar_to_ast, defines_functions, )
-from .escape import quoteattr, escape
+from .escape import quoteattr, escape, soft_unicode
 from .html import write_attrs, write_attrs_ast
 
 
@@ -407,6 +407,12 @@ class InterpolateOutput(ast.NodeTransformer):
         return node
 
 
+class UnicodifyStrings(ast.NodeTransformer):
+
+    def visit_Str(self, node):
+        return copy_loc(ast.Str(soft_unicode(node.s)), node)
+
+
 OPTIMIZATION_PIPELINE = (
     InterpolateOutput,
     OpenReplaceOptimizer,
@@ -414,7 +420,8 @@ OPTIMIZATION_PIPELINE = (
     InlineOptimizer,
     DeadDefinesOptimizer,
     StaticEscapeOptimizer,
-    MultiWriteOptimizer
+    UnicodifyStrings,
+    MultiWriteOptimizer,
 )
 
 

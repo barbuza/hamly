@@ -13,7 +13,7 @@ def get_template(filename):
 
     if not cached:
         with open(filename) as fp:
-            source = fp.read()
+            source = fp.read().decode("utf-8")
 
         tree = parse(source)
         compiled = compile_tree(tree)
