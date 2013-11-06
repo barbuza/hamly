@@ -34,6 +34,7 @@ def controlnode_to_ast(node):
     mod = ast.parse("%s\n  pass" % node.code)
     ctrl = mod.body[0]
     ctrl.body = sum(map(node_to_ast, node.children), [])
+    ctrl.orelse = sum(map(node_to_ast, node.orelse), [])
     return [ctrl]
 
 

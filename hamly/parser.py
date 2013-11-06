@@ -26,6 +26,7 @@ class ControlNode(Node):
     def __init__(self, code):
         self.code = code
         self.children = []
+        self.orelse = []
 
 
 class TextNode(Node):
@@ -170,7 +171,31 @@ def line_to_text(line):
     return TextNode(line.content)
 
 
+def fold(tree):
+    result = []
+    ctrl = None
+    for item in tree:
+
+        if isinstance(item, ControlNode) or isinstance(item, TagNode):
+            item.children = fold(item.children)
+
+        if isinstance(item, ControlNode):
+            if item.code == "else:":
+                if not ctrl:
+                    raise RuntimeError("unblanced else near line %s" % item.line.num )
+                ctrl.orelse = item.children
+            else:
+                result.append(item)
+                ctrl = item
+        else:
+            ctrl = None
+            result.append(item)
+
+    return result
+
+
 def parse(source):
     lines = parse_lines(source)
     tree = make_tree(lines)
-    return linetree_to_nodetree(tree)
+    nodetree = linetree_to_nodetree(tree)
+    return fold(nodetree)
