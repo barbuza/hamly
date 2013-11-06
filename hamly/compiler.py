@@ -31,6 +31,8 @@ def tagnode_to_ast(node):
 
 
 def controlnode_to_ast(node):
+    if node.code == "break:":
+        return [ast.Break()]
     mod = ast.parse("%s\n  pass" % node.code)
     ctrl = mod.body[0]
     ctrl.body = sum(map(node_to_ast, node.children), [])
